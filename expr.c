@@ -2,7 +2,7 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
- *		 2011, 2012, 2013, 2014, 2016
+ *		 2011, 2012, 2013, 2014, 2016, 2017
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.90 2016/11/07 16:58:48 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.101 2017/11/18 12:01:53 tg Exp $");
 
 #define EXPRTOK_DEFNS
 #include "exprtok.h"
@@ -203,7 +203,7 @@ evalerr(Expr_state *es, enum error_type type, const char *str)
 
 	case ET_BADLIT:
 		warningf(true, Tf_sD_s_qs, es->expression,
-		    "bad number", str);
+		    Tbadnum, str);
 		break;
 
 	case ET_RECURSIVE:
@@ -558,9 +558,9 @@ exprtoken(Expr_state *es)
 
 	/* skip whitespace */
  skip_spaces:
-	while ((c = *cp), ksh_isspace(c))
+	while (ctype(ord((c = *cp)), C_SPACE))
 		++cp;
-	if (es->tokp == es->expression && c == '#') {
+	if (es->tokp == es->expression && c == ord('#')) {
 		/* expression begins with # */
 		/* switch to unsigned */
 		es->natural = true;
@@ -571,10 +571,11 @@ exprtoken(Expr_state *es)
 
 	if (c == '\0')
 		es->tok = END;
-	else if (ksh_isalphx(c)) {
-		for (; ksh_isalnux(c); c = *cp)
-			cp++;
-		if (c == '[') {
+	else if (ctype(c, C_ALPHX)) {
+		do {
+			c = ord(*++cp);
+		} while (ctype(c, C_ALNUX));
+		if (c == ord('[')) {
 			size_t len;
 
 			len = array_ref_len(cp);
@@ -616,9 +617,9 @@ exprtoken(Expr_state *es)
 		tvar[c] = '\0';
 		goto process_tvar;
 #endif
-	} else if (ksh_isdigit(c)) {
-		while (c != '_' && (ksh_isalnux(c) || c == '#'))
-			c = *cp++;
+	} else if (ctype(c, C_DIGIT)) {
+		while (ctype(c, C_ALNUM | C_HASH))
+			c = ord(*cp++);
 		strndupx(tvar, es->tokp, --cp - es->tokp, ATEMP);
  process_tvar:
 		es->val = tempvar("");
@@ -632,7 +633,7 @@ exprtoken(Expr_state *es)
 	} else {
 		int i, n0;
 
-		for (i = 0; (n0 = opname[i][0]); i++)
+		for (i = 0; (n0 = ord(opname[i][0])); i++)
 			if (c == n0 && strncmp(cp, opname[i],
 			    (size_t)oplen[i]) == 0) {
 				es->tok = (enum token)i;
@@ -771,8 +772,7 @@ utf_ptradj(const char *src)
 {
 	register size_t n;
 
-	if (!UTFMODE ||
-	    *(const unsigned char *)(src) < 0xC2 ||
+	if (!UTFMODE || rtt2asc(*src) < 0xC2 ||
 	    (n = utf_mbtowc(NULL, src)) == (size_t)-1)
 		n = 1;
 	return (n);
@@ -790,7 +790,7 @@ utf_mbtowc(unsigned int *dst, const char *src)
 	const unsigned char *s = (const unsigned char *)src;
 	unsigned int c, wc;
 
-	if ((wc = *s++) < 0x80) {
+	if ((wc = ord(rtt2asc(*s++))) < 0x80) {
  out:
 		if (dst != NULL)
 			*dst = wc;
@@ -804,7 +804,7 @@ utf_mbtowc(unsigned int *dst, const char *src)
 
 	if (wc < 0xE0) {
 		wc = (wc & 0x1F) << 6;
-		if (((c = *s++) & 0xC0) != 0x80)
+		if (((c = ord(rtt2asc(*s++))) & 0xC0) != 0x80)
 			goto ilseq;
 		wc |= c & 0x3F;
 		goto out;
@@ -812,11 +812,11 @@ utf_mbtowc(unsigned int *dst, const char *src)
 
 	wc = (wc & 0x0F) << 12;
 
-	if (((c = *s++) & 0xC0) != 0x80)
+	if (((c = ord(rtt2asc(*s++))) & 0xC0) != 0x80)
 		goto ilseq;
 	wc |= (c & 0x3F) << 6;
 
-	if (((c = *s++) & 0xC0) != 0x80)
+	if (((c = ord(rtt2asc(*s++))) & 0xC0) != 0x80)
 		goto ilseq;
 	wc |= c & 0x3F;
 
@@ -833,18 +833,18 @@ utf_wctomb(char *dst, unsigned int wc)
 	unsigned char *d;
 
 	if (wc < 0x80) {
-		*dst = wc;
+		*dst = asc2rtt(wc);
 		return (1);
 	}
 
 	d = (unsigned char *)dst;
 	if (wc < 0x0800)
-		*d++ = (wc >> 6) | 0xC0;
+		*d++ = asc2rtt((wc >> 6) | 0xC0);
 	else {
-		*d++ = ((wc = wc > 0xFFFD ? 0xFFFD : wc) >> 12) | 0xE0;
-		*d++ = ((wc >> 6) & 0x3F) | 0x80;
+		*d++ = asc2rtt(((wc = wc > 0xFFFD ? 0xFFFD : wc) >> 12) | 0xE0);
+		*d++ = asc2rtt(((wc >> 6) & 0x3F) | 0x80);
 	}
-	*d++ = (wc & 0x3F) | 0x80;
+	*d++ = asc2rtt((wc & 0x3F) | 0x80);
 	return ((char *)d - dst);
 }
 
@@ -856,23 +856,23 @@ utf_wctomb(char *dst, unsigned int wc)
 int
 ksh_access(const char *fn, int mode)
 {
+#ifdef __OS2__
+	return (access_ex(access, fn, mode));
+#else
 	int rv;
-#ifndef __OS2__
 	struct stat sb;
 
 	if ((rv = access(fn, mode)) == 0 && kshuid == 0 && (mode & X_OK) &&
 	    (rv = stat(fn, &sb)) == 0 && !S_ISDIR(sb.st_mode) &&
 	    (sb.st_mode & (S_IXUSR|S_IXGRP|S_IXOTH)) == 0)
 		rv = -1;
-#else
-	rv = access_ex(access, fn, mode);
-#endif
 
 	return (rv);
+#endif
 }
 
 #ifndef MIRBSD_BOOTFLOPPY
-/* From: X11/xc/programs/xterm/wcwidth.c,v 1.9 */
+/* From: X11/xc/programs/xterm/wcwidth.c,v 1.10 */
 
 struct mb_ucsrange {
 	unsigned short beg;
@@ -883,8 +883,8 @@ static int mb_ucsbsearch(const struct mb_ucsrange arr[], size_t elems,
     unsigned int val) MKSH_A_PURE;
 
 /*
- * Generated from the Unicode Character Database, Version 9.0.0, by
- * MirOS: contrib/code/Snippets/eawparse,v 1.3 2014/11/16 12:16:24 tg Exp $
+ * Generated from the Unicode Character Database, Version 10.0.0, by
+ * MirOS: contrib/code/Snippets/eawparse,v 1.12 2017/09/06 16:05:45 tg Exp $
  */
 
 static const struct mb_ucsrange mb_ucs_combining[] = {
@@ -895,16 +895,14 @@ static const struct mb_ucsrange mb_ucs_combining[] = {
 	{ 0x05C1, 0x05C2 },
 	{ 0x05C4, 0x05C5 },
 	{ 0x05C7, 0x05C7 },
-	{ 0x0600, 0x0605 },
 	{ 0x0610, 0x061A },
 	{ 0x061C, 0x061C },
 	{ 0x064B, 0x065F },
 	{ 0x0670, 0x0670 },
-	{ 0x06D6, 0x06DD },
+	{ 0x06D6, 0x06DC },
 	{ 0x06DF, 0x06E4 },
 	{ 0x06E7, 0x06E8 },
 	{ 0x06EA, 0x06ED },
-	{ 0x070F, 0x070F },
 	{ 0x0711, 0x0711 },
 	{ 0x0730, 0x074A },
 	{ 0x07A6, 0x07B0 },
@@ -914,7 +912,8 @@ static const struct mb_ucsrange mb_ucs_combining[] = {
 	{ 0x0825, 0x0827 },
 	{ 0x0829, 0x082D },
 	{ 0x0859, 0x085B },
-	{ 0x08D4, 0x0902 },
+	{ 0x08D4, 0x08E1 },
+	{ 0x08E3, 0x0902 },
 	{ 0x093A, 0x093A },
 	{ 0x093C, 0x093C },
 	{ 0x0941, 0x0948 },
@@ -940,6 +939,7 @@ static const struct mb_ucsrange mb_ucs_combining[] = {
 	{ 0x0AC7, 0x0AC8 },
 	{ 0x0ACD, 0x0ACD },
 	{ 0x0AE2, 0x0AE3 },
+	{ 0x0AFA, 0x0AFF },
 	{ 0x0B01, 0x0B01 },
 	{ 0x0B3C, 0x0B3C },
 	{ 0x0B3F, 0x0B3F },
@@ -962,7 +962,8 @@ static const struct mb_ucsrange mb_ucs_combining[] = {
 	{ 0x0CC6, 0x0CC6 },
 	{ 0x0CCC, 0x0CCD },
 	{ 0x0CE2, 0x0CE3 },
-	{ 0x0D01, 0x0D01 },
+	{ 0x0D00, 0x0D01 },
+	{ 0x0D3B, 0x0D3C },
 	{ 0x0D41, 0x0D44 },
 	{ 0x0D4D, 0x0D4D },
 	{ 0x0D62, 0x0D63 },
@@ -1047,7 +1048,7 @@ static const struct mb_ucsrange mb_ucs_combining[] = {
 	{ 0x1CED, 0x1CED },
 	{ 0x1CF4, 0x1CF4 },
 	{ 0x1CF8, 0x1CF9 },
-	{ 0x1DC0, 0x1DF5 },
+	{ 0x1DC0, 0x1DF9 },
 	{ 0x1DFB, 0x1DFF },
 	{ 0x200B, 0x200F },
 	{ 0x202A, 0x202E },
@@ -1135,14 +1136,16 @@ static const struct mb_ucsrange mb_ucs_fullwidth[] = {
 	{ 0x2B1B, 0x2B1C },
 	{ 0x2B50, 0x2B50 },
 	{ 0x2B55, 0x2B55 },
-	{ 0x2E80, 0x303E },
-	{ 0x3040, 0xA4CF },
+	{ 0x2E80, 0x3029 },
+	{ 0x302E, 0x303E },
+	{ 0x3040, 0x3098 },
+	{ 0x309B, 0xA4CF },
 	{ 0xA960, 0xA97F },
 	{ 0xAC00, 0xD7A3 },
 	{ 0xF900, 0xFAFF },
 	{ 0xFE10, 0xFE19 },
 	{ 0xFE30, 0xFE6F },
-	{ 0xFF00, 0xFF60 },
+	{ 0xFF01, 0xFF60 },
 	{ 0xFFE0, 0xFFE6 }
 };
 

@@ -1,7 +1,7 @@
-# $MirOS: src/bin/mksh/Makefile,v 1.155 2016/11/12 00:20:37 tg Exp $
+# $MirOS: src/bin/mksh/Makefile,v 1.162 2017/08/29 13:38:29 tg Exp $
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
-#		2011, 2012, 2013, 2014, 2015, 2016
+#		2011, 2012, 2013, 2014, 2015, 2016, 2017
 #	mirabilos <m@mirbsd.org>
 #
 # Provided that these terms and disclaimer and all copyright notices
@@ -52,12 +52,13 @@ CPPFLAGS+=	-DMKSH_ASSUME_UTF8 -DMKSH_DISABLE_DEPRECATED \
 		-DHAVE_SYS_SIGLIST=1 -DHAVE_FLOCK=1 -DHAVE_LOCK_FCNTL=1 \
 		-DHAVE_GETRUSAGE=1 -DHAVE_GETSID=1 -DHAVE_GETTIMEOFDAY=1 \
 		-DHAVE_KILLPG=1 -DHAVE_MEMMOVE=1 -DHAVE_MKNOD=0 -DHAVE_MMAP=1 \
-		-DHAVE_NICE=1 -DHAVE_REVOKE=1 -DHAVE_SETLOCALE_CTYPE=0 \
-		-DHAVE_LANGINFO_CODESET=0 -DHAVE_SELECT=1 -DHAVE_SETRESUGID=1 \
-		-DHAVE_SETGROUPS=1 -DHAVE_STRERROR=0 -DHAVE_STRSIGNAL=0 \
-		-DHAVE_STRLCPY=1 -DHAVE_FLOCK_DECL=1 -DHAVE_REVOKE_DECL=1 \
+		-DHAVE_FTRUNCATE=1 -DHAVE_NICE=1 -DHAVE_REVOKE=1 \
+		-DHAVE_SETLOCALE_CTYPE=0 -DHAVE_LANGINFO_CODESET=0 \
+		-DHAVE_SELECT=1 -DHAVE_SETRESUGID=1 -DHAVE_SETGROUPS=1 \
+		-DHAVE_STRERROR=0 -DHAVE_STRSIGNAL=0 -DHAVE_STRLCPY=1 \
+		-DHAVE_FLOCK_DECL=1 -DHAVE_REVOKE_DECL=1 \
 		-DHAVE_SYS_ERRLIST_DECL=1 -DHAVE_SYS_SIGLIST_DECL=1 \
-		-DHAVE_PERSISTENT_HISTORY=1 -DMKSH_BUILD_R=541
+		-DHAVE_PERSISTENT_HISTORY=1 -DMKSH_BUILD_R=562
 CPPFLAGS+=	-D${${PROG:L}_tf:C/(Mir${MAN:E}{0,1}){2}/4/:S/x/mksh_BUILD/:U}
 CPPFLAGS+=	-I.
 COPTS+=		-std=c89 -Wall
@@ -94,13 +95,18 @@ CLEANFILES+=	${GENERATED}
 
 ${PROG} beforedepend: ${GENERATED}
 
+REGRESS_CATEGORIES:=shell:legacy-no,int:32,shell:textmode-no,shell:binmode-yes,fastbox
+.if !empty(GCEXTRA:M-DMKSH_FAUX_EBCDIC)
+REGRESS_CATEGORIES:=${REGRESS_CATEGORIES},shell:faux-ebcdic
+.endif
+
 regress: ${PROG} check.pl check.t
 	-rm -rf regress-dir
 	mkdir -p regress-dir
 	echo export FNORD=666 >regress-dir/.mkshrc
 	HOME=$$(realpath regress-dir) perl ${SRCDIR}/check.pl \
 	    -s ${SRCDIR}/check.t -v -p ./${PROG} \
-	    -C shell:legacy-no,int:32,fastbox
+	    -C ${REGRESS_CATEGORIES}
 
 TEST_BUILD_ENV:=	TARGET_OS= CPP=
 TEST_BUILD_ENV+=	HAVE_STRING_POOLING=0
@@ -194,6 +200,9 @@ d: all
 dr:
 	p=$$(realpath ${PROG:Q}) && cd ${SRCDIR:Q} && exec ${MKSH} \
 	    ${BSDSRCDIR:Q}/contrib/hosted/tg/sdmksh "$$p"
+
+r:
+	cd ${.CURDIR:Q} && exec env ENV=/nonexistent PS1='% ' ${.OBJDIR:Q}/mksh
 
 repool:
 	cd ${.CURDIR:Q} && \
