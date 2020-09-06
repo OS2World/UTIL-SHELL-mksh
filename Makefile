@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/Makefile,v 1.164 2019/03/01 16:18:14 tg Exp $
+# $MirOS: src/bin/mksh/Makefile,v 1.169 2020/05/16 22:53:04 tg Exp $
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017
@@ -58,7 +58,8 @@ CPPFLAGS+=	-DMKSH_ASSUME_UTF8 -DMKSH_DISABLE_DEPRECATED \
 		-DHAVE_STRERROR=0 -DHAVE_STRSIGNAL=0 -DHAVE_STRLCPY=1 \
 		-DHAVE_FLOCK_DECL=1 -DHAVE_REVOKE_DECL=1 \
 		-DHAVE_SYS_ERRLIST_DECL=1 -DHAVE_SYS_SIGLIST_DECL=1 \
-		-DHAVE_PERSISTENT_HISTORY=1 -DMKSH_BUILD_R=571
+		-DHAVE_ST_MTIM=0 -DHAVE_ST_MTIMENSEC=1 \
+		-DHAVE_PERSISTENT_HISTORY=1 -DMKSH_BUILD_R=592
 CPPFLAGS+=	-D${${PROG:L}_tf:C/(Mir${MAN:E}{0,1}){2}/4/:S/x/mksh_BUILD/:U}
 CPPFLAGS+=	-I.
 COPTS+=		-std=c89 -Wall
@@ -76,8 +77,8 @@ DEBUGFILE?=	No
 CPPFLAGS+=	-DDF=mksh_debugtofile
 .endif
 
-MANLINKS=	[ false pwd sh sleep test true
-BINLINKS=	${MANLINKS} echo domainname kill
+MANLINKS=	[ false pwd rksh sh sleep test true
+BINLINKS=	${MANLINKS} domainname echo kill
 .for _i in ${BINLINKS}
 LINKS+=		${BINDIR}/${PROG} ${BINDIR}/${_i}
 .endfor
@@ -207,3 +208,10 @@ r:
 repool:
 	cd ${.CURDIR:Q} && \
 	    exec ${MKSH} ${BSDSRCDIR:Q}/scripts/stringpool.sh sh.h
+
+.ifmake validate
+.  include "${BSDSRCDIR}/www/Defs.mk"
+.endif
+validate:
+	${_inc2xhtml} <${.CURDIR}/mksh.faq | xmlstarlet val -d ${_xhtmldtd} -e -
+	#(cd ${BSDSRCDIR:Q}/www && make obj && exec make validate=mksh-faq)
